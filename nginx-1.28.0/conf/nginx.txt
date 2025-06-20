@@ -1,0 +1,70 @@
+worker_processes 1;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log logs/access.log main;
+    error_log  logs/error.log warn;
+
+    sendfile on;
+    keepalive_timeout 65;
+
+    gzip on;
+    gzip_min_length 1k;
+    gzip_types text/plain application/javascript application/x-javascript text/css application/xml text/javascript;
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    server {
+        listen       80;
+        server_name  localhost;
+
+        # 静态资源入口
+        location / {
+            root   html/sky;
+            index  index.html index.htm;
+        }
+
+        # 管理端接口代理
+        location /api/ {
+            proxy_pass http://127.0.0.1:8080/admin/;
+        }
+
+        # 用户端接口代理（注：已禁用 upstream，直接用 IP）
+        location /user/ {
+            proxy_pass http://127.0.0.1:8080/user/;
+        }
+
+        # WebSocket 支持
+        location /ws/ {
+            proxy_pass http://127.0.0.1:8080/ws/;
+            proxy_http_version 1.1;
+            proxy_read_timeout 3600s;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "$connection_upgrade";
+        }
+
+        # 错误页处理
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html {
+            root html;
+        }
+
+        # 禁止访问 .ht 等敏感文件
+        location ~ /\. {
+            deny all;
+        }
+    }
+}
