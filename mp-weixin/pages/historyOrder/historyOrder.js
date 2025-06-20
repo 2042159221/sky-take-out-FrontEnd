@@ -302,6 +302,7 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
   onLoad: function onLoad() {
     // 清理小程序存储空间
     try {
+      // 清理本地存储文件
       uni.getSavedFileList({
         success: function success(res) {
           if (res.fileList && res.fileList.length > 0) {
@@ -309,7 +310,7 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
               uni.removeSavedFile({
                 filePath: file.filePath,
                 complete: function complete(res) {
-                  console.log('清理存储空间:', res);
+                  console.log('清理存储文件完成');
                 }
               });
             });
@@ -317,8 +318,18 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
         }
       });
       
-      // 清理本地缓存
+      // 清理部分本地数据缓存，保留必要的登录信息
+      var token = uni.getStorageSync('token');
+      var userInfo = uni.getStorageSync('userInfo');
       uni.clearStorageSync();
+      if (token) {
+        uni.setStorageSync('token', token);
+      }
+      if (userInfo) {
+        uni.setStorageSync('userInfo', userInfo);
+      }
+      
+      console.log('清理存储空间完成');
     } catch (e) {
       console.error('清理存储空间失败:', e);
     }
@@ -371,12 +382,28 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
       try {
         // 检查time是否为字符串类型
         if (typeof time === 'string') {
-          return (0, _index.getOvertime)(time);
+          var end = Date.parse(new Date(time.replace(/-/g, "/")));
+          var now = Date.parse(new Date());
+          var m15 = 15 * 60 * 1000;
+          var msec = m15 - (now - end);
+          return msec;
         } else if (time instanceof Date) {
-          return (0, _index.getOvertime)(time.toISOString());
+          var end = time.getTime();
+          var now = Date.parse(new Date());
+          var m15 = 15 * 60 * 1000;
+          var msec = m15 - (now - end);
+          return msec;
         } else if (time) {
           // 如果是其他类型，尝试转为字符串
-          return (0, _index.getOvertime)(String(time));
+          var timeStr = String(time);
+          if (timeStr.indexOf('-') !== -1) {
+            timeStr = timeStr.replace(/-/g, "/");
+          }
+          var end = Date.parse(new Date(timeStr));
+          var now = Date.parse(new Date());
+          var m15 = 15 * 60 * 1000;
+          var msec = m15 - (now - end);
+          return msec;
         }
         return 0; // 如果time为null或undefined，返回0
       } catch (e) {
@@ -395,11 +422,37 @@ var _index = __webpack_require__(/*! @/utils/index.js */ 29);function _interopRe
       (0, _api.getOrderPage)(params).then(function (res) {
         if (res.code === 1) {
           setTimeout(function () {uni.hideLoading();}, 100);
-          _this2.recentOrdersList = _this2.recentOrdersList.concat(res.data.records);
-          _this2.pageInfo.total = res.data.total;
-          _this2.isEmpty = true;
-
+          
+          // 确保返回的数据是数组
+          var records = res.data.records || [];
+          
+          // 处理每个订单的时间格式
+          records.forEach(function(order) {
+            if (order.orderTime) {
+              // 确保orderTime是字符串格式
+              if (typeof order.orderTime !== 'string') {
+                order.orderTime = String(order.orderTime);
+              }
+            }
+          });
+          
+          _this2.recentOrdersList = _this2.recentOrdersList.concat(records);
+          _this2.pageInfo.total = res.data.total || 0;
+          _this2.isEmpty = _this2.recentOrdersList.length === 0;
+        } else {
+          uni.hideLoading();
+          uni.showToast({
+            title: res.msg || '加载失败',
+            icon: 'none'
+          });
         }
+      }).catch(function(err) {
+        uni.hideLoading();
+        console.error('获取订单列表失败:', err);
+        uni.showToast({
+          title: '网络异常，请稍后重试',
+          icon: 'none'
+        });
       });
     },
     // 再来一单
